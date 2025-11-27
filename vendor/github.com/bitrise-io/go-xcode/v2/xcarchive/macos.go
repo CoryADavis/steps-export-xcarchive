@@ -77,6 +77,34 @@ type MacosExtension struct {
 	macosBaseApplication
 }
 
+func findMacosExtensionPaths(path string) ([]string, error) {
+	patterns := []string{
+		filepath.Join(escapeGlobPath(path), "Contents/PlugIns/*.appex"),
+		filepath.Join(escapeGlobPath(path), "Contents/PlugIns/*.extensionkitextension"),
+		filepath.Join(escapeGlobPath(path), "Contents/Extensions/*.appex"),
+		filepath.Join(escapeGlobPath(path), "Contents/Extensions/*.extensionkitextension"),
+	}
+
+	extensionPaths := []string{}
+	visited := map[string]struct{}{}
+
+	for _, pattern := range patterns {
+		pths, err := filepath.Glob(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("failed to search for extensions using pattern: %s, error: %s", pattern, err)
+		}
+		for _, pth := range pths {
+			if _, ok := visited[pth]; ok {
+				continue
+			}
+			visited[pth] = struct{}{}
+			extensionPaths = append(extensionPaths, pth)
+		}
+	}
+
+	return extensionPaths, nil
+}
+
 // NewMacosExtension ...
 func NewMacosExtension(path string) (MacosExtension, error) {
 	baseApp, err := newMacosBaseApplication(path)
@@ -103,20 +131,17 @@ func NewMacosApplication(path string) (MacosApplication, error) {
 	}
 
 	extensions := []MacosExtension{}
-	{
-		pattern := filepath.Join(escapeGlobPath(path), "Contents/PlugIns/*.appex")
-		pths, err := filepath.Glob(pattern)
+	pths, err := findMacosExtensionPaths(path)
+	if err != nil {
+		return MacosApplication{}, err
+	}
+	for _, pth := range pths {
+		extension, err := NewMacosExtension(pth)
 		if err != nil {
-			return MacosApplication{}, fmt.Errorf("failed to search for watch application's extensions using pattern: %s, error: %s", pattern, err)
+			return MacosApplication{}, err
 		}
-		for _, pth := range pths {
-			extension, err := NewMacosExtension(pth)
-			if err != nil {
-				return MacosApplication{}, err
-			}
 
-			extensions = append(extensions, extension)
-		}
+		extensions = append(extensions, extension)
 	}
 
 	return MacosApplication{
